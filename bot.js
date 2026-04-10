@@ -1,44 +1,58 @@
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1492273168163930126/vZ81o3RxgsI1knLYVveX_J5DSd0Wcp0olW3QHNQ67NxSHwz0m4wpS-GG-gWw9R1Te8YH";
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-let lastItem = null;
+const WEBHOOK = "https://discord.com/api/webhooks/1492273168163930126/vZ81o3RxgsI1knLYVveX_J5DSd0Wcp0olW3QHNQ67NxSHwz0m4wpS-GG-gWw9R1Te8YH";
 
-async function check() {
+let lastIds = new Set();
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+const getItems = async () => {
     try {
-        const res = await fetch("https://www.pekora.zip/apisite/catalog/v1/items?limit=10");
-        
-        const text = await res.text();
+        const res = await fetch("https://www.pekora.zip/catalog?sortType=RecentlyUpdated", {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "text/html"
+            }
+        });
 
-        // evita crash se vier HTML
-        if (text.startsWith("<")) {
-            console.log("API bloqueou (HTML recebido)");
-            return;
-        }
+        const html = await res.text();
 
-        const data = JSON.parse(text);
-
-        const item = data?.data?.[0];
-        if (!item) return;
-
-        if (item.id !== lastItem) {
-            lastItem = item.id;
-
-            await fetch(WEBHOOK_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    content: `🚨 NOVO ITEM!\n${item.name}\nhttps://www.pekora.zip/catalog/${item.id}`
-                })
-            });
-
-            console.log("Novo item enviado:", item.name);
-        }
+        // pega ids dos itens pelo link
+        const matches = [...html.matchAll(/\/catalog\/(\d+)/g)];
+        return matches.map(m => m[1]);
 
     } catch (err) {
-        console.log("Erro:", err.message);
+        console.log("Erro ao pegar itens:", err.message);
+        return [];
     }
-}
+};
 
-// roda a cada 10 segundos
-setInterval(check, 10000);
+const sendDiscord = async (id) => {
+    await fetch(WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            content: `🚨 ITEM NOVO!\nhttps://www.pekora.zip/catalog/${id}`
+        })
+    });
+};
 
-console.log("Bot rodando...");
+const main = async () => {
+    console.log("Bot rodando...");
+
+    while (true) {
+        const items = await getItems();
+
+        for (const id of items) {
+            if (!lastIds.has(id)) {
+                lastIds.add(id);
+                console.log("Novo item:", id);
+                await sendDiscord(id);
+            }
+        }
+
+        await sleep(5000); // verifica a cada 5s
+    }
+};
+
+main();
