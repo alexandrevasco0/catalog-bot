@@ -1,40 +1,36 @@
-import fetch from "node-fetch";
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1492273168163930126/vZ81o3RxgsI1knLYVveX_J5DSd0Wcp0olW3QHNQ67NxSHwz0m4wpS-GG-gWw9R1Te8YH";
 
-const WEBHOOK = "https://discord.com/api/webhooks/1492266488441340044/FNN_HZa7vbrB2ah5EgBFjKQELSSbqA76VJrakYPfwxlwVcJXCfUyI5Pjeg3O6Tp-i4e6";
-
-const API = "https://www.pekora.zip/catalog";
-
-let lastId = null;
+let lastItem = null;
 
 async function check() {
     try {
-        const res = await fetch(API);
+        const res = await fetch("https://www.pekora.zip/apisite/catalog/v1/items?limit=10");
+        
         const text = await res.text();
 
-        const match = text.match(/\/catalog\/(\d+)/);
-
-        if (!match) return;
-
-        const id = match[1];
-
-        if (!lastId) {
-            lastId = id;
-            console.log("Iniciado:", id);
+        // evita crash se vier HTML
+        if (text.startsWith("<")) {
+            console.log("API bloqueou (HTML recebido)");
             return;
         }
 
-        if (id !== lastId) {
-            lastId = id;
+        const data = JSON.parse(text);
 
-            console.log("NOVO ITEM:", id);
+        const item = data?.data?.[0];
+        if (!item) return;
 
-            await fetch(WEBHOOK, {
+        if (item.id !== lastItem) {
+            lastItem = item.id;
+
+            await fetch(WEBHOOK_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    content: `🚨 ITEM NOVO!\nhttps://www.pekora.zip/catalog/${id}`
+                    content: `🚨 NOVO ITEM!\n${item.name}\nhttps://www.pekora.zip/catalog/${item.id}`
                 })
             });
+
+            console.log("Novo item enviado:", item.name);
         }
 
     } catch (err) {
@@ -42,4 +38,7 @@ async function check() {
     }
 }
 
-setInterval(check, 3000);
+// roda a cada 10 segundos
+setInterval(check, 10000);
+
+console.log("Bot rodando...");
