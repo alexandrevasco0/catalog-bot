@@ -2,115 +2,74 @@ import axios from "axios";
 import fs from "fs";
 import http from "http";
 
-// 🔥 COLOCA SEU WEBHOOK AQUI
 const WEBHOOK = "https://discord.com/api/webhooks/1492273168163930126/vZ81o3RxgsI1knLYVveX_J5DSd0Wcp0olW3QHNQ67NxSHwz0m4wpS-GG-gWw9R1Te8YH";
 
-// API (por enquanto Roblox oficial)
-const URL = "https://catalog.roblox.com/v1/search/items?category=All&limit=10&sortType=3";
+// keep alive
+http.createServer((req, res) => res.end("ok")).listen(3000);
 
-// =====================
-// KEEP ALIVE SERVER
-// =====================
-http.createServer((req, res) => {
-  res.write("Bot rodando");
-  res.end();
-}).listen(3000);
+console.log("🚀 Bot API iniciado");
 
-console.log("🌐 Servidor fake rodando na porta 3000");
+let anteriores = [];
 
-// =====================
-// LOAD ULTIMO ITEM
-// =====================
-let ultimoItem = null;
-
-if (fs.existsSync("ultimo.txt")) {
-  ultimoItem = fs.readFileSync("ultimo.txt", "utf-8");
-  console.log("📂 Último item carregado:", ultimoItem);
+if (fs.existsSync("itens.json")) {
+  anteriores = JSON.parse(fs.readFileSync("itens.json"));
 }
 
-// =====================
-// FUNÇÃO PRINCIPAL
-// =====================
-async function verificarCatalogo() {
-  console.log("🔍 Verificando catálogo às", new Date().toLocaleTimeString());
+// 🔥 API REAL
+const API = "https://www.pekora.zip/apisite/catalog/v3/search/items?category=All&limit=30&sortType=3&minPrice=0&maxPrice=0&currency=3";
 
+async function verificar() {
   try {
-    const res = await axios.get(URL, {
+    console.log("🔍 verificando API...");
+
+    const res = await axios.get(API, {
       headers: {
         "User-Agent": "Mozilla/5.0"
       }
     });
 
-    const items = res.data?.data;
+    const itens = res.data.data;
 
-    if (!items || items.length === 0) {
-      console.log("❌ Nenhum item encontrado");
+    if (!itens || itens.length === 0) {
+      console.log("❌ sem itens");
       return;
     }
 
-    const novoItem = items[0];
+    const ids = itens.map(i => i.id);
 
-    // primeira execução
-    if (!ultimoItem) {
-      ultimoItem = novoItem.id;
-      fs.writeFileSync("ultimo.txt", String(novoItem.id));
-      console.log("🟡 Primeiro item salvo:", novoItem.name);
-      return;
-    }
+    const novos = ids.filter(id => !anteriores.includes(id));
 
-    // novo item detectado
-    if (String(novoItem.id) !== String(ultimoItem)) {
-      ultimoItem = novoItem.id;
+    if (novos.length > 0) {
+      for (const id of novos) {
+        const item = itens.find(i => i.id === id);
 
-      fs.writeFileSync("ultimo.txt", String(novoItem.id));
+        // 🔥 filtrar só ROBLOX
+        if (item.creatorName !== "ROBLOX") continue;
 
-      console.log("🚨 NOVO ITEM:", novoItem.name);
+        console.log("🚨 NOVO ITEM:", item.name);
 
-      await axios.post(WEBHOOK, {
-        content: `🚨 ITEM NOVO!\n\n🧢 ${novoItem.name}\n🔗 https://www.roblox.com/catalog/${novoItem.id}`
-      });
+        await axios.post(WEBHOOK, {
+          content: `🚨 ITEM NOVO!\n**${item.name}**\nhttps://www.pekora.zip/catalog/${item.id}`
+        });
+      }
 
-      console.log("✅ Enviado pro Discord");
-
+      anteriores = ids;
+      fs.writeFileSync("itens.json", JSON.stringify(anteriores));
     } else {
-      console.log("⏳ Nada novo");
+      console.log("⏳ nada novo");
     }
 
   } catch (err) {
-    console.log("❌ ERRO:", err.message);
+    console.log("❌ erro:", err.message);
   }
 }
 
-// =====================
-// LOOP INFINITO
-// =====================
+// loop rápido
 async function loop() {
   while (true) {
-    await verificarCatalogo();
-    await new Promise(r => setTimeout(r, 10000));
+    await verificar();
+    await new Promise(r => setTimeout(r, 2000)); // 2s
   }
 }
 
-// =====================
-// KEEP ALIVE LOG
-// =====================
-setInterval(() => {
-  console.log("💓 Bot ainda vivo...");
-}, 30000);
-
-// =====================
-// ANTI-CRASH
-// =====================
-process.on("uncaughtException", (err) => {
-  console.log("💥 Erro não tratado:", err);
-});
-
-process.on("unhandledRejection", (err) => {
-  console.log("💥 Promise não tratada:", err);
-});
-
-// =====================
-// START
-// =====================
-console.log("🤖 Bot iniciado...");
 loop();
